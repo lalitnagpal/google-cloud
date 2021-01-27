@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Date;
+import java.util.List;
+import java.util.Spliterator;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -74,32 +76,38 @@ public class StreamingFiles {
 	
 	public void uploadFile(String bucketName, String sourceFile, String blobName) {
 
-		BlobId blobId = BlobId.of(bucketName, blobName);
-		BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType("text/plain").build();
-		WriteChannel writer = storage.writer(blobInfo);
 		//writer.setChunkSize(2*1024*1024);
 		
 		long startTime = (new Date()).getTime();
-		
-		
-		try (Stream<String> stream = StreamSupport.stream(Files.lines(Paths.get(sourceFile)).spliterator(), true)) {
-			stream.iterator().forEachRemaining( ctr -> {
-				byte[] content = ctr.getBytes(StandardCharsets.UTF_8);
-				try {
-					System.out.println("uploading..."+content.length);
-					writer.write(ByteBuffer.wrap(content, 0, content.length));
-				} catch (IOException ex) {
-				  System.out.println("Exception when uploading: " + ex.getMessage());
-				}
-			});
+		try {
+			Spliterator spliterator = Files.lines(Paths.get(sourceFile)).spliterator();
+			Spliterator split1 = spliterator.trySplit();
+			Spliterator split2 = spliterator.trySplit();
+			Spliterator split3 = spliterator.trySplit();
+			Spliterator split4 = spliterator.trySplit();
+			List spliteratorList = List.of(split1, split2, split3, split4);
 			
-			writer.close();
+			int partNumber = 0;
+			
+			spliteratorList.parallelStream().forEach(ctr -> {
+					BlobId blobId = BlobId.of(bucketName, blobName);
+					BlobInfo blobInfo = BlobInfo.newBuilder(blobId).setContentType("text/plain").build();
+					WriteChannel writer = storage.writer(blobInfo);
+	
+					byte[] content = ((String)ctr).getBytes(StandardCharsets.UTF_8);
+					try {
+						writer.write(ByteBuffer.wrap(content, 0, content.length));
+						writer.close();
+					} catch (IOException ex) {
+					  System.out.println("Exception when uploading: " + ex.getMessage());
+					}
+			});
 			
 			long endTime = (new Date()).getTime();
 			
 			System.out.println("Time taken -> " + (endTime - startTime));
-		} catch (IOException ex) {
-			  System.out.println("Exception when uploading: " + ex.getMessage());
+		} catch(Exception e) {
+			
 		}
 		
 	}
